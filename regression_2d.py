@@ -111,7 +111,7 @@ def save(fig, name):
 
 
 # Shared limits so the separate files stay directly comparable across L/M/H
-# (replaces sharex/sharey from the old side-by-side layout)
+
 all_y = np.concatenate([np.r_[f["y"], f["y_hat"]] for f in fits.values()])
 pad = 0.05 * (all_y.max() - all_y.min())
 y_lim = (all_y.min() - pad, all_y.max() + pad)
