@@ -7,6 +7,7 @@
 
 # Graphics: fitted line with residual segments, predicted vs. actual,
 # residuals vs. predicted, and normal Q-Q plots of the residuals.
+# Every graph is saved as its own PNG file in a "figures" folder.
 
 
 import numpy as np
@@ -35,7 +36,7 @@ def load(path):
 
 
 def coefficient_stats(X, resid, k):
-    # Standard errors for [b0, b1]  
+    # Standard errors for [b0, b1]
     n = X.shape[0]
     Xd = np.column_stack([np.ones(n), X])        # design matrix with intercept
     dof = n - k - 1
@@ -81,71 +82,92 @@ for label, f in fits.items():
     print(f"  {label:20s} y_hat = {f['b0']:.4f} + {f['b1']:.4f} x")
 
 ##########################################################################################
-# PLOTS
+# PLOTS  (one graph per file)
 ###########################################################################################
 
 COLORS = {"Low noise (L)": "#2a6fb0", "Moderate noise (M)": "#d08a1f",
           "High noise (H)": "#b5332e"}
+TAGS = {"Low noise (L)": "L", "Moderate noise (M)": "M", "High noise (H)": "H"}
 plt.rcParams.update({"font.size": 10, "axes.spines.top": False,
                      "axes.spines.right": False})
 
-# 1. Data with fitted line and residual segments (the ISLR Fig 3.1 style)
-fig, axes = plt.subplots(1, 3, figsize=(15, 4.5), sharex=True, sharey=True)
-for ax, (label, f) in zip(axes, fits.items()):
+FIG_DIR = Path("figures")
+FIG_DIR.mkdir(exist_ok=True)
+saved = []
+
+
+def save(fig, name):
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / name, dpi=150)
+    plt.close(fig)
+    saved.append(name)
+
+
+# Shared limits so the separate files stay directly comparable
+
+all_y = np.concatenate([np.r_[f["y"], f["y_hat"]] for f in fits.values()])
+pad = 0.05 * (all_y.max() - all_y.min())
+y_lim = (all_y.min() - pad, all_y.max() + pad)
+r_lim = max(np.abs(f["resid"]).max() for f in fits.values()) * 1.1
+
+for label, f in fits.items():
+    tag, color = TAGS[label], COLORS[label]
+
+    # 1. Data with fitted line and residual segments
+    fig, ax = plt.subplots(figsize=(6, 4.5))
     xs = np.linspace(0, 1, 100)
     ax.vlines(f["X"], f["y_hat"], f["y"], color="0.75", lw=0.8, zorder=1)
-    ax.scatter(f["X"], f["y"], s=18, color=COLORS[label], zorder=2)
+    ax.scatter(f["X"], f["y"], s=18, color=color, zorder=2)
     ax.plot(xs, f["b0"] + f["b1"] * xs, color="black", lw=1.8, zorder=3)
+    ax.set_ylim(y_lim)
     ax.set_title(f"1D {label}\n$\\hat y$ = {f['b0']:.3f} + {f['b1']:.3f}x"
                  f"   R² = {f['r2']:.3f}")
-    ax.set_xlabel("x")
-axes[0].set_ylabel("y")
-fig.tight_layout()
-fig.savefig("1d_fit_residuals.png", dpi=150)
+    ax.set_xlabel("x"); ax.set_ylabel("y")
+    save(fig, f"1d_fit_residuals_{tag}.png")
 
-# 2. Predicted vs actual
-fig, axes = plt.subplots(1, 3, figsize=(15, 4.5), sharex=True, sharey=True)
-for ax, (label, f) in zip(axes, fits.items()):
-    lo, hi = min(f["y"].min(), f["y_hat"].min()), max(f["y"].max(), f["y_hat"].max())
-    ax.plot([lo, hi], [lo, hi], "--", color="0.4", lw=1)
-    ax.scatter(f["y"], f["y_hat"], s=18, color=COLORS[label])
-    ax.set_title(f"1D {label}")
-    ax.set_xlabel("Actual y")
-axes[0].set_ylabel("Predicted ŷ")
-fig.tight_layout()
-fig.savefig("1d_pred_vs_actual.png", dpi=150)
+    # 2. Predicted vs actual
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    ax.plot(y_lim, y_lim, "--", color="0.4", lw=1)
+    ax.scatter(f["y"], f["y_hat"], s=18, color=color)
+    ax.set_xlim(y_lim); ax.set_ylim(y_lim)
+    ax.set_title(f"1D {label}: predicted vs. actual")
+    ax.set_xlabel("Actual y"); ax.set_ylabel("Predicted ŷ")
+    save(fig, f"1d_pred_vs_actual_{tag}.png")
 
-# 3. Residual diagnostics: residuals vs predicted (top) and Q-Q (bottom)
-fig, axes = plt.subplots(2, 3, figsize=(15, 8))
-lim = max(np.abs(f["resid"]).max() for f in fits.values()) * 1.1
-for j, (label, f) in enumerate(fits.items()):
-    ax = axes[0, j]
+    # 3a. Residuals vs predicted
+    fig, ax = plt.subplots(figsize=(6, 4.5))
     ax.axhline(0, color="0.4", lw=1)
-    ax.scatter(f["y_hat"], f["resid"], s=18, color=COLORS[label])
-    ax.set_ylim(-lim, lim)
+    ax.scatter(f["y_hat"], f["resid"], s=18, color=color)
+    ax.set_ylim(-r_lim, r_lim)
     ax.set_title(f"1D {label}: residuals vs. predicted")
     ax.set_xlabel("Predicted ŷ"); ax.set_ylabel("Residual")
-    ax = axes[1, j]
+    save(fig, f"1d_resid_vs_pred_{tag}.png")
+
+    # 3b. Normal Q-Q of residuals
+    fig, ax = plt.subplots(figsize=(6, 4.5))
     (osm, osr), (slope, intercept, _) = stats.probplot(f["resid"], dist="norm")
-    ax.scatter(osm, osr, s=18, color=COLORS[label])
+    ax.scatter(osm, osr, s=18, color=color)
     ax.plot(osm, slope * osm + intercept, color="black", lw=1.2)
     ax.set_title(f"1D {label}: normal Q-Q of residuals")
     ax.set_xlabel("Theoretical quantiles"); ax.set_ylabel("Sample quantiles")
-fig.tight_layout()
-fig.savefig("1d_residual_diagnostics.png", dpi=150)
+    save(fig, f"1d_qq_{tag}.png")
 
 # 4. Metrics vs noise level
-fig, axes = plt.subplots(1, 2, figsize=(11, 4))
 lv = ["L", "M", "H"]
-axes[0].plot(lv, table["R2"], "o-", label="R²")
-axes[0].plot(lv, table["Adj R2"], "s--", label="Adjusted R²")
-axes[0].set_title("Explained variance vs. noise"); axes[0].set_ylim(0, 1)
-axes[0].legend(frameon=False)
-axes[1].plot(lv, table["RSE"], "o-", label="RSE")
-axes[1].set_title("RSE (estimated noise σ) vs. noise"); axes[1].set_ylim(bottom=0)
-axes[1].legend(frameon=False)
-for ax in axes:
-    ax.set_xlabel("Noise level")
-fig.tight_layout()
-fig.savefig("1d_metrics_vs_noise.png", dpi=150)
-print("\nSaved results_1d.csv and 4 figures.")
+
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.plot(lv, table["R2"], "o-", label="R²")
+ax.plot(lv, table["Adj R2"], "s--", label="Adjusted R²")
+ax.set_title("Explained variance vs. noise"); ax.set_ylim(0, 1)
+ax.set_xlabel("Noise level"); ax.legend(frameon=False)
+save(fig, "1d_r2_vs_noise.png")
+
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.plot(lv, table["RSE"], "o-", label="RSE")
+ax.set_title("RSE (estimated noise σ) vs. noise"); ax.set_ylim(bottom=0)
+ax.set_xlabel("Noise level"); ax.legend(frameon=False)
+save(fig, "1d_rse_vs_noise.png")
+
+print(f"\nSaved results_1d.csv and {len(saved)} figures to '{FIG_DIR}/':")
+for name in saved:
+    print("  ", name)
